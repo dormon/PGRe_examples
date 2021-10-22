@@ -30,3 +30,23 @@
 *.exe
 *.out
 *.app
+
+# hidden files
+.*
+
+*~
+
+# cmake and other build files
+CMakeCache.txt
+CMakeFiles
+Makefile
+cmake_install.cmake
+install_manifest.txt
+/doc/
+build*/
+html/
+latex/
+release/
+*.zip
+eval/
+*.pyc
