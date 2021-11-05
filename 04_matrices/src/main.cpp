@@ -4,6 +4,9 @@
 #include <geGL/geGL.h>
 #include <geGL/StaticCalls.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <bunny.hpp>
 
 using namespace ge::gl;
@@ -97,7 +100,10 @@ void setVertexAttribute(
 int main(int argc,char*argv[]){
   SDL_Init(SDL_INIT_VIDEO);//init. video
 
-  auto window = SDL_CreateWindow("PGRe_examples",0,0,1024,768,SDL_WINDOW_OPENGL);
+  uint32_t width = 1024;
+  uint32_t height = 768;
+
+  auto window = SDL_CreateWindow("PGRe_examples",0,0,width,height,SDL_WINDOW_OPENGL);
 
   unsigned version = 450;//context version
   unsigned profile = SDL_GL_CONTEXT_PROFILE_CORE;//context profile
@@ -121,9 +127,13 @@ int main(int argc,char*argv[]){
 
   uniform float scale = 1.f;
 
+  uniform mat4 view = mat4(1.);
+  uniform mat4 proj = mat4(1.);
+
   void main(){
     vColor = nor;
-    gl_Position = vec4(pos*scale,1);
+  
+    gl_Position = proj*view*vec4(pos*scale,1);
   }
 
   ).";
@@ -150,6 +160,10 @@ int main(int argc,char*argv[]){
   GLuint scaleUniform = glGetUniformLocation(prg,"scale");
 
 
+  GLuint viewUniform = glGetUniformLocation(prg,"view");
+  GLuint projUniform = glGetUniformLocation(prg,"proj");
+
+
   GLuint vbo;
   glCreateBuffers(1,&vbo);
   glNamedBufferData(vbo,sizeof(bunnyVertices),bunnyVertices,GL_DYNAMIC_DRAW);
@@ -171,6 +185,20 @@ int main(int argc,char*argv[]){
 
   float scale = 1.f;
 
+  glm::mat4 view = glm::mat4(1.f);
+  glm::mat4 proj = glm::mat4(1.f);
+
+  float angleY = 0.f;
+  float angleX = 0.f;
+  float distance = 2;
+
+
+  float aspectRatio = (float)width / (float) height;
+
+  float near = 0.1f;
+  float far  = 1000.f;
+  proj = glm::perspective(glm::half_pi<float>(),aspectRatio,near,far);
+
   bool running = true;
   while(running){//Main Loop
     SDL_Event event;
@@ -181,12 +209,29 @@ int main(int argc,char*argv[]){
         if(event.key.keysym.sym == SDLK_a)scale -= .01f;
         if(event.key.keysym.sym == SDLK_d)scale += .01f;
       }
+      if(event.type == SDL_MOUSEMOTION){
+        if(event.motion.state == SDL_BUTTON_RMASK){
+          float sensitivity = 0.1f;
+          angleX += sensitivity*event.motion.yrel;
+          angleY += sensitivity*event.motion.xrel;
+        }
+      }
     }
+
+
+    auto T  = glm::translate(glm::mat4(1.f),glm::vec3(0.f,0.f,-distance));
+    auto Ry = glm::rotate(glm::mat4(1.f),glm::radians(angleY),glm::vec3(0.f,1.f,0.f));
+    auto Rx = glm::rotate(glm::mat4(1.f),glm::radians(angleX),glm::vec3(1.f,0.f,0.f));
+    view = 
+      T*Rx*Ry;
 
     glClearColor(0.3f,0.3f,0.3f,1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glProgramUniform1f(prg,scaleUniform,scale);
+
+    glProgramUniformMatrix4fv(prg,viewUniform,1,GL_FALSE,glm::value_ptr(view));
+    glProgramUniformMatrix4fv(prg,projUniform,1,GL_FALSE,glm::value_ptr(proj));
 
     glUseProgram(prg);
     glBindVertexArray(vao);
