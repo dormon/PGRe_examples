@@ -218,116 +218,6 @@ class GModel{
     std::vector<std::shared_ptr<ge::gl::Buffer >>buffers ;
 };
 
-
-void error(std::string const&name,std::string const&msg){
-  bool errorCmd = false;
-  if(errorCmd){
-    std::cerr << name << std::endl;
-    std::cerr << msg << std::endl;
-  }else{
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,name.c_str(),msg.c_str(),nullptr);
-  }
-}
-
-std::string shaderTypeToName(GLuint type){
-  if(type==GL_VERTEX_SHADER         )return "vertex"    ;
-  if(type==GL_FRAGMENT_SHADER       )return "fragment"  ;
-  if(type==GL_GEOMETRY_SHADER       )return "geometry"  ;
-  if(type==GL_TESS_CONTROL_SHADER   )return "control"   ;
-  if(type==GL_TESS_EVALUATION_SHADER)return "evaluation";
-  if(type==GL_COMPUTE_SHADER        )return "compute"   ;
-  return "unknown";
-}
-
-GLuint createShader(GLuint type,std::string const&src){
-  GLuint vs = glCreateShader(type);
-  char const*vsSrc[1]={
-    src.c_str()
-  };
-
-  glShaderSource(vs,1,vsSrc,nullptr);
-  glCompileShader(vs);
-  int compileStatus;
-  glGetShaderiv(vs,GL_COMPILE_STATUS,&compileStatus);
-  if(compileStatus != GL_TRUE){
-    uint32_t const msgLen = 1<<11;
-    char msg[msgLen];
-    glGetShaderInfoLog(vs,msgLen,nullptr,msg);
-
-    error(shaderTypeToName(type)+" shader compilation error",msg);
-  }
-  return vs;
-}
-
-GLuint createProgram(std::vector<GLuint>const&shaders){
-  GLuint prg = glCreateProgram();
-
-  for(auto const&shader:shaders)
-    glAttachShader(prg,shader);
-
-  glLinkProgram(prg);
-  GLint linkStatus;
-  glGetProgramiv(prg,GL_LINK_STATUS,&linkStatus);
-  if(linkStatus != GL_TRUE){
-    uint32_t const msgLen = 1<<11;
-    char msg[msgLen];
-    glGetProgramInfoLog(prg,msgLen,nullptr,msg);
-    error("program linking error",msg);
-  }
-
-  for(auto const&shader:shaders)
-    glDeleteShader(shader);
-
-  return prg;
-}
-
-void setVertexAttribute(
-    GLuint   vao          ,
-    GLuint   attribIndex  ,
-    GLuint   nofComponents,
-    GLenum   type         ,
-    GLuint   buffer       ,
-    GLintptr offset      ,
-    GLsizei  stride      ){
-  glVertexArrayAttribBinding(vao,attribIndex,attribIndex);
-  glEnableVertexArrayAttrib(vao,attribIndex);
-  glVertexArrayAttribFormat(vao,
-      attribIndex  ,
-      nofComponents,
-      type         ,
-      GL_FALSE     , //normalization
-      0            );//relative offset
-  glVertexArrayVertexBuffer(vao,
-      attribIndex,
-      buffer,
-      offset,
-      stride
-      );
-}
-
-int main(int argc,char*argv[]){
-  SDL_Init(SDL_INIT_VIDEO);//init. video
-
-  uint32_t width = 1024;
-  uint32_t height = 768;
-
-  auto window = SDL_CreateWindow("PGRe_examples",0,0,width,height,SDL_WINDOW_OPENGL);
-
-  unsigned version = 450;//context version
-  unsigned profile = SDL_GL_CONTEXT_PROFILE_CORE;//context profile
-  unsigned flags    = SDL_GL_CONTEXT_DEBUG_FLAG;//context flags
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, version/100    );
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,(version%100)/10);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK ,profile         );
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS        ,flags           );
-
-  auto context = SDL_GL_CreateContext(window);
-
-  ge::gl::init();
-
-  auto model = GModel();
-  model.load(std::string(CMAKE_ROOT_DIR)+"/resources/models/nyra/scene.gltf");
-
 std::string const phongLightingShader = R".(
 vec3 phongLighting(
   vec3  position     ,
@@ -424,6 +314,28 @@ void main(){
 ).";
 
 
+int main(int argc,char*argv[]){
+  SDL_Init(SDL_INIT_VIDEO);//init. video
+
+  uint32_t width = 1024;
+  uint32_t height = 768;
+
+  auto window = SDL_CreateWindow("PGRe_examples",0,0,width,height,SDL_WINDOW_OPENGL);
+
+  unsigned version = 450;//context version
+  unsigned profile = SDL_GL_CONTEXT_PROFILE_CORE;//context profile
+  unsigned flags    = SDL_GL_CONTEXT_DEBUG_FLAG;//context flags
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, version/100    );
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,(version%100)/10);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK ,profile         );
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS        ,flags           );
+
+  auto context = SDL_GL_CreateContext(window);
+
+  ge::gl::init();
+
+  auto model = GModel();
+  model.load(std::string(CMAKE_ROOT_DIR)+"/resources/models/nyra/scene.gltf");
 
   auto prg = std::make_shared<ge::gl::Program>(
       std::make_shared<ge::gl::Shader>(GL_VERTEX_SHADER    ,"#version 460\n#define   VERTEX_SHADER\n"  +source),
@@ -448,15 +360,31 @@ void main(){
   float far  = 1000.f;
   proj = glm::perspective(glm::half_pi<float>(),aspectRatio,near,far);
 
+  glm::vec3 lightPosition = glm::vec3(30.f,30.f,30.f);
+
+  glm::vec2 panning = glm::vec2(0.f);
+
   bool running = true;
   while(running){//Main Loop
     SDL_Event event;
+
+    auto T  = glm::translate(glm::mat4(1.f),glm::vec3(panning,-distance));
+    auto Ry = glm::rotate(glm::mat4(1.f),glm::radians(angleY),glm::vec3(0.f,1.f,0.f));
+    auto Rx = glm::rotate(glm::mat4(1.f),glm::radians(angleX),glm::vec3(1.f,0.f,0.f));
+
     while(SDL_PollEvent(&event)){ // Event Loop
       if(event.type == SDL_QUIT)
         running = false;
       if(event.type == SDL_KEYDOWN){
         if(event.key.keysym.sym == SDLK_a)scale -= .01f;
         if(event.key.keysym.sym == SDLK_d)scale += .01f;
+
+        if(event.key.keysym.sym == SDLK_i)lightPosition.z += 2.f;
+        if(event.key.keysym.sym == SDLK_k)lightPosition.z -= 2.f;
+        if(event.key.keysym.sym == SDLK_j)lightPosition.x += 2.f;
+        if(event.key.keysym.sym == SDLK_l)lightPosition.x -= 2.f;
+        if(event.key.keysym.sym == SDLK_u)lightPosition.y += 2.f;
+        if(event.key.keysym.sym == SDLK_o)lightPosition.y -= 2.f;
       }
       if(event.type == SDL_MOUSEMOTION){
         if(event.motion.state == SDL_BUTTON_LMASK){
@@ -467,20 +395,23 @@ void main(){
         if(event.motion.state == SDL_BUTTON_RMASK){
           distance += 0.01*event.motion.yrel;
         }
+        if(event.motion.state == SDL_BUTTON_MMASK){
+          panning.x += 0.02*event.motion.xrel;
+          panning.y -= 0.02*event.motion.yrel;
+
+        }
       }
     }
 
+    view = T*Rx*Ry;
 
-    auto T  = glm::translate(glm::mat4(1.f),glm::vec3(0.f,0.f,-distance));
-    auto Ry = glm::rotate(glm::mat4(1.f),glm::radians(angleY),glm::vec3(0.f,1.f,0.f));
-    auto Rx = glm::rotate(glm::mat4(1.f),glm::radians(angleX),glm::vec3(1.f,0.f,0.f));
-    view = 
-      T*Rx*Ry;
 
     glClearColor(0.3f,0.3f,0.3f,1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   
+    prg->set3fv("lightPosition",glm::value_ptr(lightPosition));
+
     model.draw(proj,view,&*prg);
 
     SDL_GL_SwapWindow(window);
